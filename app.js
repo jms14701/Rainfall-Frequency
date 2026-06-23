@@ -369,13 +369,18 @@ async function runBasinAnalysis(durations) {
     els.status.textContent = "지속시간을 하나 이상 선택하세요.";
     return;
   }
-  const targetCount = availableBasinStations(basin).length;
+  const targetStations = availableBasinStations(basin);
+  const targetCount = targetStations.length;
   if (!targetCount) {
     els.status.textContent = `${basin} 중권역에 분석 가능한 관측소가 없습니다.`;
     return;
   }
   beginLoading(`${basin} 중권역 ${number(targetCount, 0)}개 관측소 분석 작업을 시작합니다.`);
   try {
+    if (API_BASE) {
+      await runPublicBasinAnalysis(basin, durations, targetStations);
+      return;
+    }
     const startData = await fetchJson("/api/rainfall/analyze/start", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -393,6 +398,84 @@ async function runBasinAnalysis(durations) {
   } finally {
     endLoading();
   }
+}
+
+async function runPublicBasinAnalysis(basin, durations, targetStations) {
+  const resultsByIndex = Array(targetStations.length).fill(null);
+  const errors = [];
+  let nextIndex = 0;
+  let completed = 0;
+  let rawRecordCount = 0;
+  let totalRainfallMm = 0;
+  const workerCount = Math.min(8, targetStations.length);
+  const resultCount = () => resultsByIndex.reduce((total, rows) => total + (Array.isArray(rows) ? rows.length : 0), 0);
+
+  async function analyzeNext() {
+    while (nextIndex < targetStations.length) {
+      const targetIndex = nextIndex;
+      nextIndex += 1;
+      const station = targetStations[targetIndex];
+      try {
+        const data = await fetchJson("/api/rainfall/analyze", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            station_id: station.station_id,
+            station_name: station.station_name,
+            design_station_code: station.station_id,
+            region: station.station_id,
+            start_time: fromDateTimeLocal(els.start.value),
+            end_time: fromDateTimeLocal(els.end.value),
+            durations_min: durations
+          })
+        });
+        resultsByIndex[targetIndex] = data.results || [];
+        rawRecordCount += Number(data.raw_record_count || 0);
+        totalRainfallMm += Number(data.total_rainfall_mm || 0);
+        els.status.textContent =
+          `${station.station_name} 완료 · 진행 ${completed + 1}/${targetStations.length}개 `
+          + `· 결과 ${number(resultCount(), 0)}건 · 오류 ${number(errors.length, 0)}건`;
+      } catch (error) {
+        errors.push({
+          station_id: station.station_id,
+          station_name: station.station_name,
+          error: error.message || String(error)
+        });
+        els.status.textContent =
+          `${station.station_name} 오류 · 진행 ${completed + 1}/${targetStations.length}개 `
+          + `· 결과 ${number(resultCount(), 0)}건 · 오류 ${number(errors.length, 0)}건`;
+      } finally {
+        completed += 1;
+        setProgress(Math.round((completed * 1000) / targetStations.length) / 10, `${completed}/${targetStations.length}`);
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, analyzeNext));
+  const results = resultsByIndex.flat().filter(Boolean);
+  if (!results.length && errors.length) {
+    throw new Error(errors[0].error || "중권역 분석 실패");
+  }
+  state.results = results;
+  state.rawRecords = [];
+  state.lastAnalysis = {
+    ok: true,
+    analysis_scope: "basin",
+    middle_basin: basin,
+    station_count: targetStations.length,
+    completed_stations: completed,
+    percent: 100,
+    result_count: results.length,
+    raw_record_count: rawRecordCount,
+    total_rainfall_mm: Math.round(totalRainfallMm * 1000) / 1000,
+    error_count: errors.length,
+    errors,
+    results
+  };
+  els.status.textContent =
+    `중권역 분석 완료: ${number(targetStations.length, 0)}개 관측소, `
+    + `결과 ${number(results.length, 0)}건, 오류 ${number(errors.length, 0)}건.`;
+  renderAll();
 }
 
 async function pollAnalysisJob(jobId) {
