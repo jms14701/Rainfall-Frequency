@@ -3,6 +3,7 @@ const IS_LOCAL_API_HOST = ["127.0.0.1:8765", "localhost:8765"].includes(location
 const API_BASE = IS_LOCAL_API_HOST
   ? ""
   : String(window.FLOODAL_API_BASE || localStorage.getItem("FLOODAL_API_BASE") || "").replace(/\/+$/, "");
+const STATIC_DATA_VERSION = "searchfix1";
 
 const DURATION_LABELS = {
   60: "1H",
@@ -41,6 +42,8 @@ const state = {
   stations: [],
   designStations: [],
   designRows: [],
+  staticCatalog: null,
+  staticDesignRainfall: null,
   results: initial.results || [],
   rawRecords: [],
   idfMode: "rainfall",
@@ -188,14 +191,24 @@ async function verifyDb() {
     const summary = data.summary || {};
     els.dbVerify.textContent = `행 수 ${number(summary.row_count || 0, 0)}건 검증`;
   } catch (error) {
-    els.dbVerify.textContent = "DB 검증 실패";
-    els.status.textContent = error.message;
+    els.dbVerify.textContent = !IS_LOCAL_API_HOST && !API_BASE ? "정적 기준자료" : "DB 검증 실패";
+    els.status.textContent = !IS_LOCAL_API_HOST && !API_BASE
+      ? "공개 페이지용 정적 기준자료를 불러오는 중입니다."
+      : error.message;
   }
 }
 
 async function loadDesignStations() {
-  const data = await fetchJson("/api/design-rainfall/stations");
-  state.designStations = (data.stations || []).map(normalizeStation);
+  try {
+    const data = await fetchJson("/api/design-rainfall/stations");
+    state.designStations = (data.stations || []).map(normalizeStation);
+  } catch (error) {
+    const catalog = await loadStaticCatalog();
+    state.designStations = (catalog.design_stations || []).map(normalizeStation);
+    if (!state.designStations.length) {
+      throw error;
+    }
+  }
 }
 
 async function loadObservationStations() {
@@ -208,8 +221,62 @@ async function loadObservationStations() {
     els.status.textContent = `관측소 목록 조회 실패: ${error.message}`;
   }
   if (!state.stations.length) {
+    try {
+      const catalog = await loadStaticCatalog();
+      state.stations = (catalog.stations || []).map(normalizeStation);
+    } catch (error) {
+      els.status.textContent = `정적 관측소 목록 조회 실패: ${error.message}`;
+    }
+  }
+  if (!state.stations.length) {
     state.stations = state.designStations.slice();
   }
+}
+
+async function loadStaticCatalog() {
+  if (state.staticCatalog) return state.staticCatalog;
+  const response = await fetch(staticDataUrl("data/catalog.json"));
+  if (!response.ok) {
+    throw new Error("정적 관측소 목록을 불러올 수 없습니다.");
+  }
+  state.staticCatalog = await response.json();
+  return state.staticCatalog;
+}
+
+async function loadStaticDesignRows(stationCode) {
+  if (!state.staticDesignRainfall) {
+    const response = await fetch(staticDataUrl("data/design-rainfall.json"));
+    if (!response.ok) {
+      throw new Error("정적 확률강우량을 불러올 수 없습니다.");
+    }
+    state.staticDesignRainfall = await response.json();
+  }
+  const code = String(stationCode || "");
+  const rows = (state.staticDesignRainfall.rows_by_station || {})[code] || [];
+  return rows.map(([durationMin, returnPeriodYear, rainfallMm]) => ({
+    station_code: code,
+    duration_min: Number(durationMin),
+    duration_label: durationLabelKo(durationMin),
+    return_period_year: Number(returnPeriodYear),
+    rainfall_mm: Number(rainfallMm)
+  }));
+}
+
+function staticDataUrl(path) {
+  return `${path}?v=${STATIC_DATA_VERSION}`;
+}
+
+function durationLabelKo(durationMin) {
+  return {
+    60: "1시간",
+    120: "2시간",
+    180: "3시간",
+    360: "6시간",
+    540: "9시간",
+    720: "12시간",
+    1440: "24시간",
+    2880: "48시간"
+  }[Number(durationMin)] || `${durationMin}분`;
 }
 
 function populateSelects() {
@@ -292,7 +359,7 @@ function isBasinMode() {
 
 function updateAnalysisMode() {
   const basinMode = isBasinMode();
-  els.stationSearch.disabled = basinMode;
+  els.stationSearch.disabled = false;
   els.stationSelect.disabled = basinMode;
   els.stationId.disabled = basinMode;
   els.designSelect.disabled = basinMode;
@@ -332,6 +399,17 @@ async function loadDesignRows() {
     }
     renderIdf();
   } catch (error) {
+    const staticRows = await loadStaticDesignRows(code).catch(() => []);
+    if (staticRows.length) {
+      state.designRows = staticRows;
+      if (isBasinMode()) {
+        updateAnalysisMode();
+      } else {
+        els.status.textContent = `기준 지점 ${code} 확률강우량 ${state.designRows.length}건을 불러왔습니다.`;
+      }
+      renderIdf();
+      return;
+    }
     state.designRows = [];
     els.status.textContent = error.message;
     renderIdf();
