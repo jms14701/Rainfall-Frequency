@@ -3,7 +3,7 @@ const IS_LOCAL_API_HOST = ["127.0.0.1:8765", "localhost:8765"].includes(location
 const API_BASE = IS_LOCAL_API_HOST
   ? ""
   : String(window.FLOODAL_API_BASE || localStorage.getItem("FLOODAL_API_BASE") || "").replace(/\/+$/, "");
-const STATIC_DATA_VERSION = "staticall1";
+const STATIC_DATA_VERSION = "staticall2";
 
 const DURATION_LABELS = {
   60: "1H",
@@ -263,8 +263,8 @@ async function loadStaticDesignRows(stationCode) {
   }));
 }
 
-function staticDataUrl(path) {
-  return `${path}?v=${STATIC_DATA_VERSION}`;
+function staticDataUrl(path, version = STATIC_DATA_VERSION) {
+  return `${path}?v=${encodeURIComponent(version)}`;
 }
 
 function durationLabelKo(durationMin) {
@@ -544,8 +544,19 @@ async function findStaticAnalysis(scope, basin, startTime, endTime, stationId = 
   const payload = await loadStaticResults();
   const normalizedStart = normalizeDateTimeText(startTime);
   const normalizedEnd = normalizeDateTimeText(endTime);
-  const analyses = payload.analyses || [];
-  const match = analyses.find((analysis) => {
+  let match = selectStaticAnalysis(payload.analyses || [], scope, basin, normalizedStart, normalizedEnd, stationId);
+  if (!match) {
+    const refreshed = await loadStaticResults(true);
+    match = selectStaticAnalysis(refreshed.analyses || [], scope, basin, normalizedStart, normalizedEnd, stationId);
+  }
+  if (!match) {
+    throw new Error(staticAnalysisMessage());
+  }
+  return match;
+}
+
+function selectStaticAnalysis(analyses, scope, basin, normalizedStart, normalizedEnd, stationId = "") {
+  return analyses.find((analysis) => {
     const scopeMatches = analysis.scope === scope || (scope === "station" && analysis.scope === "basin");
     const basinMatches = !basin || analysis.middle_basin === basin;
     const timeMatches =
@@ -554,15 +565,14 @@ async function findStaticAnalysis(scope, basin, startTime, endTime, stationId = 
     const stationMatches = !stationId || (analysis.results || []).some((row) => String(row.station_id) === String(stationId));
     return scopeMatches && basinMatches && timeMatches && stationMatches;
   });
-  if (!match) {
-    throw new Error(staticAnalysisMessage());
-  }
-  return match;
 }
 
-async function loadStaticResults() {
-  if (state.staticResults) return state.staticResults;
-  const response = await fetch(staticDataUrl("data/static-results.json"));
+async function loadStaticResults(refresh = false) {
+  if (state.staticResults && !refresh) return state.staticResults;
+  const version = refresh ? `${STATIC_DATA_VERSION}-${Date.now()}` : STATIC_DATA_VERSION;
+  const response = await fetch(staticDataUrl("data/static-results.json", version), {
+    cache: refresh ? "no-store" : "default"
+  });
   if (!response.ok) {
     throw new Error(staticAnalysisMessage());
   }
