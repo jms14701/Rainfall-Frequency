@@ -48,7 +48,8 @@ const state = {
   rawRecords: [],
   idfMode: "rainfall",
   selectedDurations: new Set((initial.durations_min || [60, 120, 180, 360, 540, 720, 1440, 2880]).map(Number)),
-  lastAnalysis: null
+  lastAnalysis: null,
+  lastAnalysisKey: ""
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -132,6 +133,39 @@ function severityClass(yearOrLabel, fallback) {
 
 function selectedOptionData(select) {
   return select.selectedOptions[0]?.dataset || {};
+}
+
+function analysisKeyFromControls() {
+  const durations = [...state.selectedDurations].sort((a, b) => a - b);
+  return JSON.stringify({
+    mode: els.analysisMode.value,
+    basin: els.basin.value,
+    station_id: els.stationId.value.trim(),
+    design_station_code: els.designSelect.value,
+    start_time: fromDateTimeLocal(els.start.value),
+    end_time: fromDateTimeLocal(els.end.value),
+    durations_min: durations
+  });
+}
+
+function resultsAreCurrent() {
+  return Boolean(state.results.length && state.lastAnalysisKey && state.lastAnalysisKey === analysisKeyFromControls());
+}
+
+function clearAnalysisResults(message = "") {
+  state.results = [];
+  state.rawRecords = [];
+  state.lastAnalysis = null;
+  state.lastAnalysisKey = "";
+  if (message) els.status.textContent = message;
+  renderSummary();
+  renderBars();
+  renderTable();
+}
+
+function clearResultsAfterInputChange() {
+  if (!state.results.length && !state.lastAnalysisKey) return;
+  clearAnalysisResults("입력 조건이 바뀌었습니다. 현재 조건으로 분석 실행을 다시 눌러주세요.");
 }
 
 function normalizeAgencyName(value) {
@@ -485,7 +519,9 @@ async function runAnalysis() {
     end_time: fromDateTimeLocal(els.end.value),
     durations_min: durations
   };
+  const requestKey = analysisKeyFromControls();
 
+  clearAnalysisResults();
   beginLoading("관측 10분 원자료를 가져와 이동합을 계산하는 중입니다.");
   try {
     ensureRealtimeApi();
@@ -498,6 +534,7 @@ async function runAnalysis() {
     state.rawRecords = data.raw_records || [];
     state.designRows = data.design_rows || [];
     state.lastAnalysis = data;
+    state.lastAnalysisKey = requestKey;
     els.status.textContent = `분석 완료: 원자료 ${number(data.raw_record_count || 0, 0)}건, 결과 ${state.results.length}건.`;
     renderAll();
     revealResults();
@@ -524,11 +561,13 @@ async function runBasinAnalysis(durations) {
     els.status.textContent = `${basin} 중권역에 분석 가능한 관측소가 없습니다.`;
     return;
   }
+  const requestKey = analysisKeyFromControls();
+  clearAnalysisResults();
   beginLoading(`${basin} 중권역 ${number(targetCount, 0)}개 관측소 분석 작업을 시작합니다.`);
   try {
     ensureRealtimeApi();
     if (API_BASE) {
-      await runPublicBasinAnalysis(basin, durations, targetStations);
+      await runPublicBasinAnalysis(basin, durations, targetStations, requestKey);
       return;
     }
     const startData = await fetchJson("/api/rainfall/analyze/start", {
@@ -542,7 +581,7 @@ async function runBasinAnalysis(durations) {
         durations_min: durations
       })
     });
-    await pollAnalysisJob(startData.job_id);
+    await pollAnalysisJob(startData.job_id, requestKey);
   } catch (error) {
     els.status.textContent = error.message;
   } finally {
@@ -559,7 +598,7 @@ function ensureRealtimeApi() {
   throw new Error("실시간 분석 API가 연결되어 있지 않습니다. GitHub Pages 단독으로는 API 키를 숨긴 실시간 분석을 실행할 수 없습니다.");
 }
 
-async function runPublicBasinAnalysis(basin, durations, targetStations) {
+async function runPublicBasinAnalysis(basin, durations, targetStations, requestKey) {
   const resultsByIndex = Array(targetStations.length).fill(null);
   const errors = [];
   let nextIndex = 0;
@@ -632,6 +671,7 @@ async function runPublicBasinAnalysis(basin, durations, targetStations) {
     errors,
     results
   };
+  state.lastAnalysisKey = requestKey;
   els.status.textContent =
     `중권역 분석 완료: ${number(targetStations.length, 0)}개 관측소, `
     + `결과 ${number(results.length, 0)}건, 오류 ${number(errors.length, 0)}건.`;
@@ -639,7 +679,7 @@ async function runPublicBasinAnalysis(basin, durations, targetStations) {
   revealResults();
 }
 
-async function pollAnalysisJob(jobId) {
+async function pollAnalysisJob(jobId, requestKey) {
   while (true) {
     await new Promise((resolve) => setTimeout(resolve, 1300));
     const data = await fetchJson(`/api/analyze/status?job_id=${encodeURIComponent(jobId)}`);
@@ -654,6 +694,7 @@ async function pollAnalysisJob(jobId) {
       state.results = withRowProviders(data.results || []);
       state.rawRecords = [];
       state.lastAnalysis = data;
+      state.lastAnalysisKey = requestKey;
       els.status.textContent =
         `중권역 분석 완료: ${number(data.station_count || 0, 0)}개 관측소, `
         + `결과 ${number(state.results.length, 0)}건, 오류 ${number(data.error_count || 0, 0)}건. CSV/XLSX를 받을 수 있습니다.`;
@@ -928,6 +969,10 @@ function downloadAnalysisResults(format, event) {
     els.status.textContent = "다운로드할 분석 결과가 없습니다. 먼저 분석을 실행하세요.";
     return;
   }
+  if (!resultsAreCurrent()) {
+    els.status.textContent = "현재 선택한 기간/관측소와 결과가 다릅니다. 분석 실행을 다시 누른 뒤 다운로드하세요.";
+    return;
+  }
   const rows = downloadRows();
   const table = [RESULT_DOWNLOAD_COLUMNS.map(([, label]) => label), ...rows];
   const extension = format === "xlsx" ? "xlsx" : "csv";
@@ -1190,6 +1235,7 @@ function escapeHtml(value) {
 }
 
 els.stationSearch.addEventListener("input", () => {
+  clearResultsAfterInputChange();
   const current = els.stationSelect.value;
   populateStationSelect();
   if ([...els.stationSelect.options].some((option) => option.value === current)) {
@@ -1199,11 +1245,13 @@ els.stationSearch.addEventListener("input", () => {
 });
 
 els.analysisMode.addEventListener("change", () => {
+  clearResultsAfterInputChange();
   updateAnalysisMode();
   loadDesignRows();
 });
 
 els.basin.addEventListener("change", () => {
+  clearResultsAfterInputChange();
   if (els.basin.value) {
     els.analysisMode.value = "basin";
   }
@@ -1217,15 +1265,24 @@ els.basin.addEventListener("change", () => {
 });
 
 els.stationSelect.addEventListener("change", () => {
+  clearResultsAfterInputChange();
   syncStationFields();
   loadDesignRows();
 });
 
-els.designSelect.addEventListener("change", loadDesignRows);
+els.designSelect.addEventListener("change", () => {
+  clearResultsAfterInputChange();
+  loadDesignRows();
+});
+
+els.stationId.addEventListener("input", clearResultsAfterInputChange);
+els.start.addEventListener("change", clearResultsAfterInputChange);
+els.end.addEventListener("change", clearResultsAfterInputChange);
 
 els.durationButtons.addEventListener("click", (event) => {
   const button = event.target.closest("[data-duration]");
   if (!button) return;
+  clearResultsAfterInputChange();
   const duration = Number(button.dataset.duration);
   if (state.selectedDurations.has(duration)) {
     if (state.selectedDurations.size === 1) return;
