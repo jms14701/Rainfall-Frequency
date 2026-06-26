@@ -299,7 +299,7 @@ input:focus, select:focus, button:focus-visible {
 }
 
 .stat-card {
-  min-height: 136px;
+  min-height: 146px;
   padding: 16px;
 }
 .stat-label {
@@ -323,6 +323,7 @@ input:focus, select:focus, button:focus-visible {
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
+  line-height: 1.35;
 }
 
 .visual-grid {
@@ -377,11 +378,31 @@ input:focus, select:focus, button:focus-visible {
 }
 .bar-row {
   display: grid;
-  grid-template-columns: 66px minmax(0, 1fr) 86px;
+  grid-template-columns: 94px minmax(0, 1fr) 86px;
   align-items: center;
   gap: 11px;
 }
-.bar-label, .bar-value {
+.bar-label {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.bar-label strong {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.05;
+}
+.bar-label span {
+  color: #0f172a;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bar-value {
   color: var(--muted);
   font-size: 13px;
   font-weight: 900;
@@ -557,5 +578,5 @@ td { font-weight: 700; }
   .control-row, .control-row.control-wide, .run-row, .summary-grid { grid-template-columns: 1fr; }
   .nav-list { grid-template-columns: 1fr; }
   .stat-card { min-height: 118px; }
-  .bar-row { grid-template-columns: 54px minmax(0, 1fr) 70px; }
+  .bar-row { grid-template-columns: 74px minmax(0, 1fr) 70px; }
 }

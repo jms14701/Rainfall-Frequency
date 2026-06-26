@@ -75,10 +75,16 @@ const els = {
   progressFill: $("#progressFill"),
   progressLabel: $("#progressLabel"),
   sourceProvider: $("#sourceProviderText"),
+  peak1hLabel: $("#peak1hLabel"),
   peak1h: $("#peak1hValue"),
+  peak1hNote: $("#peak1hNote"),
+  totalRainfallLabel: $("#totalRainfallLabel"),
   totalRainfall: $("#totalRainfallValue"),
+  totalRainfallNote: $("#totalRainfallNote"),
   maxFrequency: $("#maxFrequencyValue"),
+  maxFrequencyNote: $("#maxFrequencyNote"),
   peakDuration: $("#peakDurationValue"),
+  peakDurationNote: $("#peakDurationNote"),
   analysisPeriod: $("#analysisPeriodValue"),
   dbSource: $("#dbSourceValue"),
   dbVerify: $("#dbVerifyValue"),
@@ -998,6 +1004,11 @@ function revealResults() {
   });
 }
 
+function stationMetricLabel(row) {
+  if (!row) return "-";
+  return String(row.station_name || row.station_id || "-");
+}
+
 function renderSummary() {
   const peak = state.results.slice().sort((a, b) => Number(b.max_rainfall_mm) - Number(a.max_rainfall_mm))[0];
   const oneHour = state.results
@@ -1005,15 +1016,31 @@ function renderSummary() {
     .sort((a, b) => Number(b.max_rainfall_mm) - Number(a.max_rainfall_mm))[0];
   const maxFrequency = maxFrequencyRow();
   const maxYear = maxFrequency ? parseYear(maxFrequency.estimated_return_period_label, maxFrequency.estimated_return_period_year) : 0;
+  const basinAnalysis = state.lastAnalysis?.analysis_scope === "basin";
+  const stationCount = Number(state.lastAnalysis?.station_count || 0);
   els.peak1h.textContent = "-";
   els.totalRainfall.textContent = "-";
   els.maxFrequency.textContent = "-";
   els.peakDuration.textContent = "-";
+  els.peak1hLabel.textContent = basinAnalysis ? "중권역 최대 1시간" : "최대 1시간 강우량";
+  els.totalRainfallLabel.textContent = basinAnalysis ? "관측소 누적합" : "총 누적 강우량";
 
   animateNumber(els.peak1h, Number(oneHour?.max_rainfall_mm || 0), "mm");
   animateNumber(els.totalRainfall, Number(state.lastAnalysis?.total_rainfall_mm || 0), "mm");
   els.maxFrequency.textContent = maxFrequency?.estimated_return_period_label || "-";
   els.peakDuration.textContent = peak ? durationKorean(peak.duration_min) : "-";
+  els.peak1hNote.textContent = basinAnalysis && oneHour
+    ? `${stationMetricLabel(oneHour)} / ${oneHour.start_time || "발생시각 없음"}`
+    : "선택 지점 10분 이동합";
+  els.totalRainfallNote.textContent = basinAnalysis
+    ? `${number(stationCount, 0)}개 관측소 단순합 · 유역평균 아님`
+    : "선택 지점 기간 합계";
+  els.maxFrequencyNote.textContent = basinAnalysis && maxFrequency
+    ? `${stationMetricLabel(maxFrequency)} / ${durationKorean(maxFrequency.duration_min)} 기준`
+    : "상한 기준 재현기간";
+  els.peakDurationNote.textContent = basinAnalysis && peak
+    ? `${stationMetricLabel(peak)} / 중권역 내 최대 이동합`
+    : "최대 이동합 발생 지속시간";
   els.analysisPeriod.textContent = `${fromDateTimeLocal(els.start.value)} ~ ${fromDateTimeLocal(els.end.value)}`;
   els.dbSource.textContent = DESIGN_SOURCE_LABEL;
   els.maxFrequencyCard.className = `stat-card fade-slide-up ${severityClass(maxYear)}`;
@@ -1046,16 +1073,21 @@ function renderBars() {
   }
   const chartRows = peakRowsByDuration(state.results);
   const max = Math.max(...chartRows.map((row) => Number(row.max_rainfall_mm)), 1);
+  const basinAnalysis = state.lastAnalysis?.analysis_scope === "basin";
   els.barChart.innerHTML = chartRows
     .sort((a, b) => Number(a.duration_min) - Number(b.duration_min))
     .map((row) => {
       const width = Math.max(2, Number(row.max_rainfall_mm) / max * 100);
       const severity = severityClass(row.estimated_return_period_label, row.estimated_return_period_year);
       const label = escapeHtml(row.estimated_return_period_label || "-");
+      const stationLabel = escapeHtml(stationMetricLabel(row));
       const labelOutside = width < 24;
       return `
         <div class="bar-row">
-          <div class="bar-label">${durationLabel(row.duration_min)}</div>
+          <div class="bar-label">
+            <strong>${durationLabel(row.duration_min)}</strong>
+            ${basinAnalysis ? `<span title="${stationLabel}">${stationLabel}</span>` : ""}
+          </div>
           <div class="bar-track ${labelOutside ? "label-outside" : ""}" style="--bar-width: ${width}%">
             <div class="bar-fill ${severity}" data-width="${width}">
               ${labelOutside ? "" : `<span class="bar-period">${label}</span>`}

@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&family=Noto+Sans+KR:wght@500;700;900&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:FILL@0..1&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=barlabel1">
+  <link rel="stylesheet" href="styles.css?v=basinmetric1">
 </head>
 <body>
   <div class="app-shell">
@@ -111,24 +111,24 @@
 
       <section class="summary-grid" id="summaryGrid" aria-label="요약 카드">
         <article class="stat-card fade-slide-up">
-          <span class="stat-label">최대 1시간 강우량</span>
+          <span class="stat-label" id="peak1hLabel">최대 1시간 강우량</span>
           <strong id="peak1hValue" data-count="0">-</strong>
-          <small>HRFCO 10분 rf 이동합</small>
+          <small id="peak1hNote">관측소 10분 이동합</small>
         </article>
         <article class="stat-card fade-slide-up">
-          <span class="stat-label">총 누적 강우량</span>
+          <span class="stat-label" id="totalRainfallLabel">총 누적 강우량</span>
           <strong id="totalRainfallValue" data-count="0">-</strong>
-          <small>선택 기간 합계</small>
+          <small id="totalRainfallNote">선택 지점 기간 합계</small>
         </article>
         <article class="stat-card fade-slide-up" id="maxFrequencyCard">
           <span class="stat-label">최대 감지 재현기간</span>
           <strong id="maxFrequencyValue">-</strong>
-          <small>상한 기준 재현기간</small>
+          <small id="maxFrequencyNote">상한 기준 재현기간</small>
         </article>
         <article class="stat-card fade-slide-up">
           <span class="stat-label">최대 강우 지속시간</span>
           <strong id="peakDurationValue">-</strong>
-          <small>최대 이동합 발생 지속시간</small>
+          <small id="peakDurationNote">최대 이동합 발생 지속시간</small>
         </article>
         <article class="stat-card fade-slide-up">
           <span class="stat-label">분석 기간</span>
@@ -207,6 +207,6 @@
   </div>
 
   <script>window.RAINFALL_FREQUENCY_DATA = {"region": "10014010", "source": "wamis", "station_id": "10014010", "station_name": "평창군(월정분교)", "start_time": "2026-06-01 00:00", "end_time": "2026-06-10 00:00", "durations_min": [60, 120, 180, 360, 540, 720, 1440, 2880], "db_source": "rain_2022.db.rain_2022", "source_provider": "", "results": []};</script>
-  <script src="app.js?v=barlabel1"></script>
+  <script src="app.js?v=basinmetric1"></script>
 </body>
 </html>
