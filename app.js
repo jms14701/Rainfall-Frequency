@@ -304,7 +304,7 @@ async function loadStaticDesignRows(stationCode) {
   }));
 }
 
-function staticDataUrl(path, version = "realtime1") {
+function staticDataUrl(path, version = "rain2022v2") {
   return `${path}?v=${encodeURIComponent(version)}`;
 }
 
