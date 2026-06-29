@@ -1616,6 +1616,9 @@ els.analysisMode.addEventListener("change", () => {
 
 els.basin.addEventListener("change", () => {
   clearResultsAfterInputChange();
+  if (els.basin.value) {
+    els.analysisMode.value = "basin";
+  }
   const current = els.stationSelect.value;
   populateStationSelect();
   if ([...els.stationSelect.options].some((option) => option.value === current)) {
