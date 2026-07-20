@@ -26,7 +26,7 @@ const RESULT_DOWNLOAD_COLUMNS = [
   ["intensity_mm_per_hr", "강우강도(mm/hr)"],
   ["start_time", "발생 시작시각"],
   ["end_time", "발생 종료시각"],
-  ["idf_reference_rainfall_label", "IDF 기준강우량(mm)"],
+  ["idf_reference_rainfall_mm", "IDF 기준강우량(mm)"],
   ["estimated_return_period_label", "재현기간 구간"],
   ["actual_return_period_label", "실제 재현기간"],
   ["actual_probability_rainfall_mm", "실제 확률강우량(mm)"]
@@ -147,15 +147,14 @@ function returnPeriodRangeLabel(row) {
   return row.estimated_return_period_label || "기준 없음";
 }
 
-function idfReferenceRainfallLabel(row) {
+function idfReferenceRainfall(row) {
+  const direct = numericOrNull(row.design_rainfall_mm);
+  if (direct !== null) return direct;
   const lower = numericOrNull(row.lower_rainfall_mm);
   const upper = numericOrNull(row.upper_rainfall_mm);
-  if (lower !== null && upper !== null) {
-    return lower === upper ? number(lower) : `${number(lower)} ~ ${number(upper)}`;
-  }
-  if (lower === null && upper !== null) return `≤ ${number(upper)}`;
-  if (lower !== null && upper === null) return `> ${number(lower)}`;
-  return "-";
+  if (upper !== null) return upper;
+  if (lower !== null) return lower;
+  return null;
 }
 
 function interpolatedReturnPeriod(row) {
@@ -205,7 +204,7 @@ function enrichReturnPeriod(row) {
     actual_return_period_year: Number.isFinite(actual) ? Math.round(actual * 10) / 10 : "",
     actual_return_period_label: actualReturnPeriodLabel(row, actual),
     actual_probability_rainfall_mm: actualRainfall ?? "",
-    idf_reference_rainfall_label: idfReferenceRainfallLabel(row),
+    idf_reference_rainfall_mm: idfReferenceRainfall(row) ?? "",
     frequency_band: row.frequency_band || rangeLabel
   };
 }
@@ -1332,7 +1331,7 @@ function renderTable() {
           <td>${number(row.intensity_mm_per_hr)}mm/hr</td>
           <td>${escapeHtml(row.start_time || "")}</td>
           <td>${escapeHtml(row.end_time || "")}</td>
-          <td>${escapeHtml(row.idf_reference_rainfall_label || "-")}</td>
+          <td>${row.idf_reference_rainfall_mm === "" ? "-" : `${number(row.idf_reference_rainfall_mm)}mm`}</td>
           <td><span class="frequency-chip ${severity}">${escapeHtml(row.estimated_return_period_label || "-")}</span></td>
           <td><span class="frequency-chip ${severity}">${escapeHtml(row.actual_return_period_label || "-")}</span></td>
           <td>${row.actual_probability_rainfall_mm === "" ? "-" : `${number(row.actual_probability_rainfall_mm)}mm`}</td>
@@ -1371,7 +1370,7 @@ function downloadCellValue(row, key) {
   if (key === "observation_source") return providerForRow(row);
   if (key === "duration_label") return row.duration_label || durationKorean(row.duration_min);
   if (key === "design_rainfall_mm") return row.design_rainfall_mm ?? "";
-  if (key === "idf_reference_rainfall_label") return row.idf_reference_rainfall_label || idfReferenceRainfallLabel(row);
+  if (key === "idf_reference_rainfall_mm") return row.idf_reference_rainfall_mm === "" ? "" : row.idf_reference_rainfall_mm ?? idfReferenceRainfall(row) ?? "";
   if (key === "actual_probability_rainfall_mm") return row.actual_probability_rainfall_mm ?? row.max_rainfall_mm ?? "";
   return row[key] ?? "";
 }
