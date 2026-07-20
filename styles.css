@@ -481,7 +481,7 @@ input:focus, select:focus, button:focus-visible {
 .table-wrap { overflow-x: auto; }
 table {
   width: 100%;
-  min-width: 1180px;
+  min-width: 1360px;
   border-collapse: collapse;
 }
 th, td {
